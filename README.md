@@ -20,10 +20,11 @@
 | 维度 | 选型 |
 |--|--|
 | 运行时 | Spring Boot（Java） |
-| 元数据 / 血缘 | **OpenMetadata**（备 Apache Atlas / DataHub） |
-| 业务库 | PostgreSQL |
+| 元模型引擎 | **自研**（以 Apache Atlas 的 TypeDef 体系为蓝本：元类继承 / 属性约束 / 关系基数 / 分类树 / 草稿发布 / 版本 / 平台公共+租户私有作用域） |
+| 元数据采集 / 血缘来源 | 复用 Connector SPI + 数据源统一管理；OpenMetadata / Atlas / DataHub 仅作**采集连接器 / 血缘解析**的可选来源 |
+| 存储 / 检索 | PostgreSQL(JSONB 存 typedef/实例) · Elasticsearch(检索) |
 
-> 血缘 / 关系可视化前端在 `webui`（AntV G6）；多租户上下文经主仓 `libs-java` 的 `starter-tenant` 透传。
+> **核心是元模型引擎**（运行期用户可自定义类型系统），不是开箱即用目录——OpenMetadata/DataHub 类型代码态不契合，故自研；选型依据见主仓 `docs/architecture/03-技术选型.md` 与本仓选型 Issue。血缘 / 关系可视化前端在 `webui`（AntV G6）；多租户上下文经主仓 `libs-java` 的 `starter-tenant` 透传。
 
 ## 产品形态与多租户（北极星）
 
