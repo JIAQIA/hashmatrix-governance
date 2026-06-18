@@ -34,6 +34,71 @@
 
 > 详见主仓 `docs/00-主仓初始化-spec.md`、`docs/architecture/05-多租户与控制平面.md`。
 
+## 工程基座（本地构建与运行）
+
+> 本仓已具备**可独立开发/编译/调试/运行**的 Spring Boot 工程基座（governance#2）。
+> 本基座只打通基础设施与多租户路由，**不实现引擎业务**（自研元模型引擎在 #1）。
+
+**分层骨架**（依赖自上而下，内层不依赖外层）：`api`（REST/统一返回）→ `app`（用例编排/审计）→ `domain`（领域模型+出站端口）→ `infra`（PG/ES 适配+租户 schema 路由）。
+
+**公共能力复用**（经 Maven 坐标引用 `libs-java`，非 submodule 路径）：
+`starter-tenant`（`X-Tenant-Id` → `TenantContext`）、`starter-web`（统一返回/异常）、`starter-audit`（结构化审计·自动加盖租户）、`starter-observability`（actuator + `/actuator/prometheus`）、`starter-test`（JUnit5/AssertJ/Mockito/Testcontainers + 脱敏 fixtures）。
+
+```bash
+# 1) 纯打包（跳过所有测试，无需 Docker）—— 对应 DoD 验收
+mvn -q -DskipTests package
+
+# 2a) 构建 + 单测（surefire，无需 Docker）
+mvn -B package
+
+# 2b) + 集成切片（failsafe，Testcontainers 起 PG+ES，需 Docker）
+mvn -B verify
+
+# 3) 本地起栈 + 运行，验证健康检查
+docker compose -f docker-compose.local.yml up -d
+bash scripts/run-local.sh          # 或 mvn spring-boot:run -Dspring-boot.run.profiles=local
+curl -s localhost:8080/actuator/health
+curl -s localhost:8080/api/governance/probe -H 'X-Tenant-Id: tenant-demo'
+```
+
+### 冷克隆构建：配置 GitHub Packages
+
+经 Maven 坐标解析 `io.hashmatrix` 公共依赖需能访问 GitHub Packages。**注意**：pom 内 `<repositories>` 无法解析 `<parent>` 自身——Maven 必须先从制品仓拉到 parent 才会读 pom，故 `<parent>` 的解析只能靠 `~/.m2/settings.xml` 里的 **repository（profile）**，仅配 server 凭据不够。空 `.m2` 新机请加入下列 `settings.xml`（与 CI 等价）：
+
+```xml
+<settings>
+  <servers>
+    <server>
+      <id>github</id>
+      <username>YOUR_GITHUB_USERNAME</username>
+      <password>YOUR_GITHUB_TOKEN</password>   <!-- 需 packages:read -->
+    </server>
+  </servers>
+  <profiles>
+    <profile>
+      <id>github</id>
+      <repositories>
+        <repository>
+          <id>github</id>
+          <url>https://maven.pkg.github.com/HashMatrixData/hashmatrix</url>
+          <releases><enabled>true</enabled></releases>
+          <snapshots><enabled>false</enabled></snapshots>
+        </repository>
+      </repositories>
+      <pluginRepositories>
+        <pluginRepository>
+          <id>github</id>
+          <url>https://maven.pkg.github.com/HashMatrixData/hashmatrix</url>
+        </pluginRepository>
+      </pluginRepositories>
+    </profile>
+  </profiles>
+  <activeProfiles><activeProfile>github</activeProfile></activeProfiles>
+</settings>
+```
+
+> 或本地先 `mvn install` libs-java（制品进本地 `.m2` 即可离线解析）。多租户隔离：每租户路由到 `gov_<tenant>` schema（行级兜底过滤）。**连接参数/凭据均 env 可覆盖、不入库**（红线合规）。
+
 ## 说明
 
 本仓库作为 `hashmatrix` 主仓的 git submodule，挂载于 `services/governance`。架构背景见主仓 `docs/architecture/`。

@@ -1,0 +1,88 @@
+name: governance CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+  packages: read   # 解析 GitHub Packages 上的 io.hashmatrix 公共依赖
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: maven
+
+      # 生成含「github 制品仓 + 凭据」的 settings.xml。
+      # 关键：pom 的 <repositories> 解析不到 <parent> 自身，parent 必须经 settings.xml 的
+      # repository 解析；故此处用 profile 注册制品仓（不仅是 server 凭据），全新 clone 方可构建。
+      - name: 配置 Maven settings（GitHub Packages）
+        env:
+          GH_ACTOR: ${{ github.actor }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p "$HOME/.m2"
+          cat > "$HOME/.m2/settings.xml" <<EOF
+          <settings>
+            <servers>
+              <server>
+                <id>github</id>
+                <username>${GH_ACTOR}</username>
+                <password>${GH_TOKEN}</password>
+              </server>
+            </servers>
+            <profiles>
+              <profile>
+                <id>github</id>
+                <repositories>
+                  <repository>
+                    <id>github</id>
+                    <url>https://maven.pkg.github.com/HashMatrixData/hashmatrix</url>
+                    <releases><enabled>true</enabled></releases>
+                    <snapshots><enabled>false</enabled></snapshots>
+                  </repository>
+                </repositories>
+                <pluginRepositories>
+                  <pluginRepository>
+                    <id>github</id>
+                    <url>https://maven.pkg.github.com/HashMatrixData/hashmatrix</url>
+                  </pluginRepository>
+                </pluginRepositories>
+              </profile>
+            </profiles>
+            <activeProfiles>
+              <activeProfile>github</activeProfile>
+            </activeProfiles>
+          </settings>
+          EOF
+
+      - name: 红线校验（源码/POM/配置无客户信息）
+        run: bash scripts/redline-check.sh
+
+      # 密钥/凭据熵扫描：redline-check 只覆盖 IP/denylist，gitleaks 补 token/key 维度
+      # （主仓 redline-ci 不进 submodule，本仓凭据门须自带）。
+      - name: Gitleaks（密钥扫描）
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # 构建 + 单测 + 集成切片（Testcontainers 起 PG/ES，ubuntu runner 自带 Docker）。
+      # 质量门（enforcer 基线等）随 platform-parent 复用。
+      - name: Build + test (unit + integration)
+        run: mvn -B -ntp clean verify
+
+      - name: 镜像构建（多阶段，BuildKit secret 注入同一 settings.xml，不落镜像层）
+        env:
+          DOCKER_BUILDKIT: "1"
+        run: |
+          docker build --secret id=maven_settings,src="$HOME/.m2/settings.xml" \
+            -t hashmatrix-governance:ci .

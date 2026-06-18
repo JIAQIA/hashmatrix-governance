@@ -13,3 +13,6 @@ __pycache__/
 .venv/
 .env
 *.local
+
+# 红线 denylist：承载真实代号/客户术语，仅本地留存、绝不入库（CLAUDE.md 红线第 5 条）
+scripts/.redline-denylist

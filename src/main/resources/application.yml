@@ -1,0 +1,35 @@
+# 数据治理分系统 — 默认配置（所有连接参数均 env 可覆盖；不含真实主机/凭据，红线合规）
+spring:
+  application:
+    name: governance
+  datasource:
+    url: jdbc:postgresql://${PG_HOST:localhost}:${PG_PORT:5432}/${PG_DB:governance}
+    username: ${PG_USER:governance}
+    # 口令无默认：生产经 ESO 注入，缺失即 fail-fast（弱口令默认仅 application-local.yml 留作本地开发）
+    password: ${PG_PASSWORD}
+  sql:
+    init:
+      mode: never          # 基座不建业务表（typedef/实例表由引擎 #1 落地）
+  elasticsearch:
+    uris: ${ES_URIS:http://localhost:9200}
+
+# 健康检查 / 可观测：复用 starter-observability（actuator + /actuator/prometheus）
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: always
+
+# 平台公共能力开关（libs-java starter）
+hashmatrix:
+  observability:
+    service-name: governance
+    common-tags:
+      subsystem: governance
+  audit:
+    enabled: true

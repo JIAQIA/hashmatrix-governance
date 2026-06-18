@@ -1,0 +1,9 @@
+# 本地独立运行 profile：对接 docker-compose.local.yml 起的 PG + ES。
+# 以 `--spring.profiles.active=local` 激活；值与默认一致，显式留档便于本地调试覆盖。
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/governance
+    username: governance
+    password: governance
+  elasticsearch:
+    uris: http://localhost:9200
