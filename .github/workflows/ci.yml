@@ -157,19 +157,20 @@ jobs:
           </settings>
           EOF
 
-      # tag 方案：:<short-sha> 为**不可变**、可追溯到具体提交的发布 tag（部署应优先 pin 它）。
-      # :<项目版本>（本仓 pom=0.1.0，非 SNAPSHOT）当前作为**随 main 覆盖的可变别名**——注意它形如正式版、
-      #   实则每次 push 被覆盖；主仓 deploy 现 pin :0.1.0 且 pullPolicy 默认 IfNotPresent，存在「节点缓存旧
-      #   :0.1.0 不再拉取」的陈旧风险，平台级版本/tag/pullPolicy 约定待主仓拍板（D5），见讨论 HashMatrixData/hashmatrix#discussions/20。
+      # 双 tag 方案（平台发布契约 AD，主仓 docs/architecture/04 §4 / Discussion #20）：
+      #   · 不可变 :<版本>-<short-sha>（如 :0.1.0-SNAPSHOT-4e8f720）——可追溯到具体提交，部署可 pin；
+      #   · 移动 :<版本>（dev 期 :0.1.0-SNAPSHOT）——随 main 覆盖；dev values 配 pullPolicy=Always 取最新。
       # 镜像名对齐主仓 deploy/values（ghcr.io/hashmatrixdata/governance）；ghcr owner 须全小写。
       - name: 计算镜像名与 tag
         id: meta
         run: |
           if [ -z "$VERSION" ]; then echo "::error::上游 build job 未传出 project.version"; exit 1; fi
           OWNER=$(echo "$GITHUB_REPOSITORY_OWNER" | tr '[:upper:]' '[:lower:]')
+          SHA="${GITHUB_SHA::7}"
           echo "image=ghcr.io/${OWNER}/governance" >> "$GITHUB_OUTPUT"
-          echo "sha=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
-          echo "镜像：ghcr.io/${OWNER}/governance · 版本：${VERSION} · sha：${GITHUB_SHA::7}"
+          echo "moving=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "immutable=${VERSION}-${SHA}" >> "$GITHUB_OUTPUT"
+          echo "镜像：ghcr.io/${OWNER}/governance · 移动 :${VERSION} · 不可变 :${VERSION}-${SHA}"
 
       # 仅 push 到 main 时登录并发布；PR 只 build 验证 Dockerfile，不写 registry（避免污染）。
       - name: 登录 ghcr
@@ -186,12 +187,12 @@ jobs:
         run: |
           docker build \
             --secret id=maven_settings,src="$HOME/.m2/settings.xml" \
-            -t "${{ steps.meta.outputs.image }}:${VERSION}" \
-            -t "${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.sha }}" \
+            -t "${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.moving }}" \
+            -t "${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.immutable }}" \
             .
 
       - name: 推送镜像（仅 main · PR 跳过）
         if: github.event_name == 'push'
         run: |
-          docker push "${{ steps.meta.outputs.image }}:${VERSION}"
-          docker push "${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.sha }}"
+          docker push "${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.moving }}"
+          docker push "${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.immutable }}"

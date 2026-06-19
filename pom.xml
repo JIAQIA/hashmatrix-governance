@@ -17,7 +17,8 @@
 
   <groupId>io.hashmatrix.governance</groupId>
   <artifactId>hashmatrix-governance</artifactId>
-  <version>0.1.0</version>
+  <!-- dev 期统一 -SNAPSHOT（平台发布契约 AD，主仓 docs/architecture/04 §4 / Discussion #20）。 -->
+  <version>0.1.0-SNAPSHOT</version>
   <packaging>jar</packaging>
 
   <name>hashmatrix-governance</name>
@@ -125,11 +126,20 @@
 
   <build>
     <plugins>
-      <!-- 可执行 fat-jar，供 Dockerfile 多阶段构建运行期镜像 -->
+      <!--
+        可执行 fat-jar，供 Dockerfile 多阶段构建运行期镜像。
+        classifier=exec：fat-jar 产出为 *-exec.jar，**不替换**主产物（瘦 jar 仍是 target/<artifact>.jar）。
+        必须如此——否则 repackage 后主 jar 变 fat-jar（类在 BOOT-INF/classes），failsafe 的 @SpringBootTest
+        扫不到 @SpringBootConfiguration（governance#2 IT bootstrap 失败根因，见主仓 Discussion #21）。
+        Dockerfile 据此 COPY *-exec.jar。
+      -->
       <plugin>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-maven-plugin</artifactId>
         <version>${spring-boot.version}</version>
+        <configuration>
+          <classifier>exec</classifier>
+        </configuration>
         <executions>
           <execution>
             <goals>

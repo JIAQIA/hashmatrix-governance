@@ -1,4 +1,4 @@
-package io.hashmatrix.governance;
+package io.hashmatrix.governance.it;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -22,8 +22,16 @@ import org.testcontainers.junit.jupiter.Testcontainers;
  * 多租户 schema 路由与 actuator 健康——即 governance#2 验收「mvn verify 起 PG+ES → 自检绿」。
  *
  * <p>走 failsafe（{@code *IT}），{@code mvn package} 不触发；{@code mvn verify} 需本地/CI 有 Docker。
+ *
+ * <p><b>用法红线（主仓 Discussion #21 / starter-test README）</b>：本类置于 {@code io.hashmatrix.governance.it}
+ * ——{@code GovernanceApplication}（根包 {@code io.hashmatrix.governance}，{@code @SpringBootApplication}）的
+ * <b>严格子包</b>，使裸 {@code @SpringBootTest} 能从本包<b>向上</b>搜到 {@code @SpringBootConfiguration}。
+ * 故<b>不写</b> {@code @SpringBootTest(classes=...)}（指错类反触发 {@code Failed to find merged annotation
+ * for @BootstrapWith}）。结构同 canonical {@code examples/sample-service}。
  */
-@SpringBootTest(classes = GovernanceApplication.class)
+// management.server.port= 留空：测试期把 actuator 收回主上下文，使 MockMvc 可达 /actuator/health
+// （生产仍用独立管理端口 9082；MOCK 环境无真实端口，独立管理端口下 MockMvc 触不到管理上下文 → 404）。
+@SpringBootTest(properties = "management.server.port=")
 @AutoConfigureMockMvc
 @Testcontainers
 class InfraConnectivityIT {
