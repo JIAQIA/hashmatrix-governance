@@ -191,6 +191,24 @@ jobs:
             -t "${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.immutable }}" \
             .
 
+      # 守护 #18：镜像 USER 必须是「非零数字 uid」，否则 K8s restricted（runAsNonRoot:true 不带 runAsUser）
+      # 无法在不启动容器前提下验证 uid≠0 → CreateContainerConfigError。此步在 push 前（PR 也跑，因镜像
+      # build 不 gated）做 docker inspect 断言：任何人若把 Dockerfile 改回非数字 USER，CI 在此变红。
+      - name: 校验镜像 USER 为非零数字 uid（适配 restricted runAsNonRoot）
+        run: |
+          # 校验不可变 tag（push 的最终可追溯产物）；与 moving 同一镜像 ID，inspect 任一即可。
+          USER_FIELD=$(docker inspect --format '{{.Config.User}}' "${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.immutable }}")
+          echo "镜像 Config.User='${USER_FIELD}'"
+          case "$USER_FIELD" in
+            ''|*[!0-9]*)
+              echo "::error::镜像 USER 须为数字 uid（当前='${USER_FIELD}'）；非数字用户名下 K8s runAsNonRoot 无法验证 → CreateContainerConfigError（#18）"
+              exit 1 ;;
+          esac
+          if [ "$USER_FIELD" -eq 0 ]; then
+            echo "::error::镜像 USER 为 root(0)，违反 runAsNonRoot"; exit 1
+          fi
+          echo "✓ USER=${USER_FIELD} 为非零数字 uid，满足 restricted 安全上下文"
+
       - name: 推送镜像（仅 main · PR 跳过）
         if: github.event_name == 'push'
         run: |
