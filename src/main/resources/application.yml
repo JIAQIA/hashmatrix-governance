@@ -30,8 +30,9 @@ management:
     health:
       probes:
         enabled: true
-      # 组件级明细仅对已授权调用方可见：/actuator/health/** 经 starter-security 默认放行（hashmatrix#26）后，
-      # always 会把 db/ES 等组件明细暴露给匿名探针调用方，收敛为 when-authorized（与 control-plane 一致）。
+      # 组件级明细不向匿名调用方暴露：本服务 actuator 在独立管理口（9082）、未挂安全过滤链
+      # （不引 starter-security），show-details=always 会把 db/ES 等组件明细暴露给匿名调用方；
+      # 收敛为 when-authorized——无鉴权上下文时即不显明细，保守安全（与 control-plane 一致）。
       show-details: when-authorized
       # deps-optional readiness：readiness/liveness 仅看应用自身状态，
       # PG/ES 缺失时在 /actuator/health 报组件 DOWN，但不拖垮 readiness 探针（依赖为可选）。
