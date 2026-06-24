@@ -1,6 +1,8 @@
 package io.hashmatrix.governance.infra;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -8,19 +10,25 @@ import static org.mockito.Mockito.when;
 
 import io.hashmatrix.governance.domain.metadata.AssetSummary;
 import io.hashmatrix.governance.domain.metadata.AssetType;
+import io.hashmatrix.governance.domain.metadata.AssetUpsertRequest;
 import io.hashmatrix.governance.domain.metadata.MetaSearchResult;
 import io.hashmatrix.governance.domain.metadata.SearchQuery;
 import io.hashmatrix.governance.infra.persistence.MetadataAssetEntity;
 import io.hashmatrix.governance.infra.persistence.MetadataAssetRepository;
 import io.hashmatrix.starter.tenant.TenantContext;
 import io.hashmatrix.starter.tenant.TenantContextHolder;
+import io.hashmatrix.starter.tenant.TenantContextMissingException;
+import io.hashmatrix.starter.web.BusinessException;
 import io.hashmatrix.test.fixtures.MockTenants;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.http.HttpStatus;
 
 /**
  * {@link PostgresMetadataAdapter} 单元测试（mock 仓储，无库）：验证 D9 租户隔离取数（只查当前租户）、
@@ -94,5 +102,124 @@ class PostgresMetadataAdapterTest {
         assertThat(result.items()).isEmpty();
         assertThat(result.total()).isZero();
         verifyNoInteractions(repository);
+    }
+
+    @Test
+    void registersAssetUnderCurrentTenantWithServerGeneratedId() {
+        when(repository.save(any(MetadataAssetEntity.class))).thenAnswer(inv -> inv.getArgument(0));
+        PostgresMetadataAdapter adapter = new PostgresMetadataAdapter(repository);
+
+        AssetSummary summary =
+                TenantContextHolder.callWith(
+                        TenantContext.of(MockTenants.ACME),
+                        () ->
+                                adapter.register(
+                                        new AssetUpsertRequest(
+                                                "orders", AssetType.TABLE, "data-team", "orders",
+                                                List.of("finance"), Map.of("k", "v"))));
+
+        assertThat(summary.id()).isNotBlank(); // 服务端生成
+        assertThat(summary.name()).isEqualTo("orders");
+        verify(repository).existsByTenantIdAndCode(MockTenants.ACME, "orders");
+        verify(repository).save(any(MetadataAssetEntity.class));
+    }
+
+    @Test
+    void rejectsDuplicateCodeOnRegisterWith409() {
+        when(repository.existsByTenantIdAndCode(MockTenants.ACME, "orders")).thenReturn(true);
+        PostgresMetadataAdapter adapter = new PostgresMetadataAdapter(repository);
+
+        assertThatThrownBy(
+                        () ->
+                                TenantContextHolder.callWith(
+                                        TenantContext.of(MockTenants.ACME),
+                                        () ->
+                                                adapter.register(
+                                                        new AssetUpsertRequest(
+                                                                "orders", AssetType.TABLE, null, "orders",
+                                                                List.of(), Map.of()))))
+                .isInstanceOf(BusinessException.class)
+                .extracting(ex -> ((BusinessException) ex).getStatus())
+                .isEqualTo(HttpStatus.CONFLICT);
+        verify(repository, never()).save(any());
+    }
+
+    @Test
+    void failsClosedOnRegisterWhenTenantMissing() {
+        PostgresMetadataAdapter adapter = new PostgresMetadataAdapter(repository);
+
+        // 缺租户头：requireTenantId 抛出，绝不落库（D9/D2 fail-closed）。
+        assertThatThrownBy(
+                        () ->
+                                adapter.register(
+                                        new AssetUpsertRequest(
+                                                "orders", AssetType.TABLE, null, null, List.of(), Map.of())))
+                .isInstanceOf(TenantContextMissingException.class);
+        verifyNoInteractions(repository);
+    }
+
+    @Test
+    void updatesExistingAssetWithinTenant() {
+        MetadataAssetEntity existing =
+                MetadataAssetEntity.register(
+                        MockTenants.ACME, "orders", AssetType.TABLE, "data-team",
+                        List.of("finance"), Map.of());
+        UUID id = existing.getId();
+        when(repository.findByIdAndTenantId(id, MockTenants.ACME)).thenReturn(Optional.of(existing));
+        when(repository.save(any(MetadataAssetEntity.class))).thenAnswer(inv -> inv.getArgument(0));
+        PostgresMetadataAdapter adapter = new PostgresMetadataAdapter(repository);
+
+        AssetSummary summary =
+                TenantContextHolder.callWith(
+                        TenantContext.of(MockTenants.ACME),
+                        () ->
+                                adapter.update(
+                                        id.toString(),
+                                        new AssetUpsertRequest(
+                                                "orders_v2", AssetType.VIEW, "bi-team", null,
+                                                List.of("report"), Map.of())));
+
+        assertThat(summary.name()).isEqualTo("orders_v2");
+        assertThat(summary.type()).isEqualTo(AssetType.VIEW);
+    }
+
+    @Test
+    void update404WhenIdNotInTenant() {
+        UUID id = UUID.fromString("11111111-1111-4111-8111-111111111111");
+        when(repository.findByIdAndTenantId(id, MockTenants.TENANT_DEMO)).thenReturn(Optional.empty());
+        PostgresMetadataAdapter adapter = new PostgresMetadataAdapter(repository);
+
+        assertThatThrownBy(
+                        () ->
+                                TenantContextHolder.callWith(
+                                        TenantContext.of(MockTenants.TENANT_DEMO),
+                                        () ->
+                                                adapter.update(
+                                                        id.toString(),
+                                                        new AssetUpsertRequest(
+                                                                "x", AssetType.TABLE, null, null,
+                                                                List.of(), Map.of()))))
+                .isInstanceOf(BusinessException.class)
+                .extracting(ex -> ((BusinessException) ex).getStatus())
+                .isEqualTo(HttpStatus.NOT_FOUND);
+    }
+
+    @Test
+    void update404OnMalformedId() {
+        PostgresMetadataAdapter adapter = new PostgresMetadataAdapter(repository);
+
+        assertThatThrownBy(
+                        () ->
+                                TenantContextHolder.callWith(
+                                        TenantContext.of(MockTenants.ACME),
+                                        () ->
+                                                adapter.update(
+                                                        "not-a-uuid",
+                                                        new AssetUpsertRequest(
+                                                                "x", AssetType.TABLE, null, null,
+                                                                List.of(), Map.of()))))
+                .isInstanceOf(BusinessException.class)
+                .extracting(ex -> ((BusinessException) ex).getStatus())
+                .isEqualTo(HttpStatus.NOT_FOUND);
     }
 }

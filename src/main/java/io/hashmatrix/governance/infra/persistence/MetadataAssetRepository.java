@@ -18,4 +18,10 @@ public interface MetadataAssetRepository extends JpaRepository<MetadataAssetEnti
 
     /** 按 id + 租户取单条：确保跨租户不可越权读到他人资产（D9）。 */
     Optional<MetadataAssetEntity> findByIdAndTenantId(UUID id, String tenantId);
+
+    /** 登记去重：当前租户下是否已存在该业务 code（业务唯一键 {@code (tenant_id, code)}）。 */
+    boolean existsByTenantIdAndCode(String tenantId, String code);
+
+    /** 编辑去重：当前租户下、**排除自身 id** 后是否已有该 code 占用（避免改 code 撞他人）。 */
+    boolean existsByTenantIdAndCodeAndIdNot(String tenantId, String code, UUID id);
 }

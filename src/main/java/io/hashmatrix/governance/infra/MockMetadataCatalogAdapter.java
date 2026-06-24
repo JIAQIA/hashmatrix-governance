@@ -3,6 +3,7 @@ package io.hashmatrix.governance.infra;
 import io.hashmatrix.governance.domain.metadata.AssetCatalogSearch;
 import io.hashmatrix.governance.domain.metadata.AssetSummary;
 import io.hashmatrix.governance.domain.metadata.AssetType;
+import io.hashmatrix.governance.domain.metadata.AssetUpsertRequest;
 import io.hashmatrix.governance.domain.metadata.MetaSearchResult;
 import io.hashmatrix.governance.domain.metadata.SearchQuery;
 import io.hashmatrix.governance.domain.port.MetadataCatalogPort;
@@ -62,5 +63,17 @@ public class MockMetadataCatalogAdapter implements MetadataCatalogPort {
         log.debug("meta search (mock) tenant={} q={} type={}", tenant, query.q(), query.type());
         // mock 不做租户隔离：始终在同一脱敏种子集上检索（检索语义复用共享组件）。
         return AssetCatalogSearch.search(SEED, query);
+    }
+
+    /** mock 为只读脱敏目录，不支持写入；真实登记/编辑见默认装配的 {@code PostgresMetadataAdapter}。 */
+    @Override
+    public AssetSummary register(AssetUpsertRequest request) {
+        throw new UnsupportedOperationException("mock catalog is read-only; activate PG adapter for writes");
+    }
+
+    /** mock 为只读脱敏目录，不支持写入。 */
+    @Override
+    public AssetSummary update(String id, AssetUpsertRequest request) {
+        throw new UnsupportedOperationException("mock catalog is read-only; activate PG adapter for writes");
     }
 }

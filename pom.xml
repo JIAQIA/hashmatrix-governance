@@ -82,6 +82,11 @@
       <groupId>io.hashmatrix</groupId>
       <artifactId>hashmatrix-starter-tenant</artifactId>
     </dependency>
+    <!-- 写入面请求体校验（@Valid）：资产登记/编辑 name/type 必填（#29）。 -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-validation</artifactId>
+    </dependency>
     <dependency>
       <groupId>io.hashmatrix</groupId>
       <artifactId>hashmatrix-starter-web</artifactId>
