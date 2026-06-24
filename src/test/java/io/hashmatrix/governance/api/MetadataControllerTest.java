@@ -6,6 +6,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import io.hashmatrix.governance.app.MetadataCommandService;
 import io.hashmatrix.governance.app.MetadataQueryService;
 import io.hashmatrix.governance.domain.metadata.AssetType;
 import io.hashmatrix.governance.domain.metadata.MetaSearchResult;
@@ -21,12 +22,13 @@ import org.mockito.junit.jupiter.MockitoExtension;
 class MetadataControllerTest {
 
     @Mock private MetadataQueryService service;
+    @Mock private MetadataCommandService commandService;
 
     @Test
     void appliesContractDefaultsAndParsesType() {
         MetaSearchResult stub = new MetaSearchResult(List.of(), 1, 20, 0, List.of());
         when(service.search(any())).thenReturn(stub);
-        MetadataController controller = new MetadataController(service);
+        MetadataController controller = new MetadataController(service, commandService);
 
         controller.search("orders", "table", null, null);
 
@@ -44,7 +46,7 @@ class MetadataControllerTest {
         // 契约仅声明 200：不可识别（"bogus"）与空串（前端清空筛选常发 type=）均退化为「不过滤」，不抛 4xx。
         MetaSearchResult stub = new MetaSearchResult(List.of(), 1, 20, 0, List.of());
         when(service.search(any())).thenReturn(stub);
-        MetadataController controller = new MetadataController(service);
+        MetadataController controller = new MetadataController(service, commandService);
 
         controller.search(null, "bogus", null, null);
         controller.search(null, "", null, null);

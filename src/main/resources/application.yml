@@ -13,7 +13,19 @@ spring:
     password: ${PG_PASSWORD}
   sql:
     init:
-      mode: never          # 基座不建业务表（typedef/实例表由引擎 #1 落地）
+      mode: never          # 业务表 schema 由 Flyway 管理，禁用 spring.sql 脚本初始化
+  jpa:
+    # schema 由 Flyway 管理，JPA 不做 DDL（仅校验 entity 映射与库一致，映射漂移即 fail-fast）。
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
   elasticsearch:
     uris: ${ES_URIS:http://localhost:9200}
 
@@ -30,7 +42,10 @@ management:
     health:
       probes:
         enabled: true
-      show-details: always
+      # 组件级明细不向匿名调用方暴露：本服务 actuator 在独立管理口（9082）、未挂安全过滤链
+      # （不引 starter-security），show-details=always 会把 db/ES 等组件明细暴露给匿名调用方；
+      # 收敛为 when-authorized——无鉴权上下文时即不显明细，保守安全（与 control-plane 一致）。
+      show-details: when-authorized
       # deps-optional readiness：readiness/liveness 仅看应用自身状态，
       # PG/ES 缺失时在 /actuator/health 报组件 DOWN，但不拖垮 readiness 探针（依赖为可选）。
       group:

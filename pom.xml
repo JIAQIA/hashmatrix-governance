@@ -11,7 +11,7 @@
   <parent>
     <groupId>io.hashmatrix</groupId>
     <artifactId>hashmatrix-platform-parent</artifactId>
-    <version>0.2.0</version>
+    <version>0.2.2</version>
     <relativePath/>
   </parent>
 
@@ -41,7 +41,7 @@
       <dependency>
         <groupId>io.hashmatrix</groupId>
         <artifactId>hashmatrix-bom</artifactId>
-        <version>0.2.0</version>
+        <version>0.2.2</version>
         <type>pom</type>
         <scope>import</scope>
       </dependency>
@@ -82,6 +82,11 @@
       <groupId>io.hashmatrix</groupId>
       <artifactId>hashmatrix-starter-tenant</artifactId>
     </dependency>
+    <!-- 写入面请求体校验（@Valid）：资产登记/编辑 name/type 必填（#29）。 -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-validation</artifactId>
+    </dependency>
     <dependency>
       <groupId>io.hashmatrix</groupId>
       <artifactId>hashmatrix-starter-web</artifactId>
@@ -95,7 +100,15 @@
       <artifactId>hashmatrix-starter-observability</artifactId>
     </dependency>
 
-    <!-- 持久化/检索：PostgreSQL(JSONB) + Elasticsearch 客户端（仅打通连通，不建业务表） -->
+    <!--
+      持久化/检索：PostgreSQL(JSONB) + Elasticsearch 客户端。
+      data-jpa 落首张业务表 metadata_asset（M2 #27）；jdbc 仍保留，供 JdbcEsConnectivityAdapter
+      的 search_path 连通探针复用。schema 由 Flyway 管理（启动期建表），JPA 仅 validate 映射。
+    -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-data-jpa</artifactId>
+    </dependency>
     <dependency>
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-jdbc</artifactId>
@@ -103,6 +116,16 @@
     <dependency>
       <groupId>org.postgresql</groupId>
       <artifactId>postgresql</artifactId>
+      <scope>runtime</scope>
+    </dependency>
+    <!-- schema 演进（Flyway）：M2 行级 tenant_id 隔离档（主仓 Disc #58 / arch 05 D9 落地档位）。 -->
+    <dependency>
+      <groupId>org.flywaydb</groupId>
+      <artifactId>flyway-core</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.flywaydb</groupId>
+      <artifactId>flyway-database-postgresql</artifactId>
       <scope>runtime</scope>
     </dependency>
     <dependency>
